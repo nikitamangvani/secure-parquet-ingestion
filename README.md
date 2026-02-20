@@ -30,16 +30,30 @@ Once ingested, the data is stored in DuckLake, with an optional step to update a
 
 ---
 
-## Workflow
+## Quick Start
 
-```mermaid
-flowchart TD
-  A[S3 Landing Bucket] --> B[Lambda: Virus Scan]
-  B -->|infected| Q[Quarantine / Delete]
-  B -->|clean| C[S3 Trusted Client Bucket]
-  C --> R[Redis Streams: ingestion_requests]
-  R --> PM[Pod Manager]
-  PM --> W[K8s Worker Pod]
-  W --> D[DuckLake]
-  W --> U[Metric Update]
-  W --> X[Shutdown]
+# Start Redis
+docker run -p 6379:6379 redis:7
+
+# Run worker locally
+cd worker
+pip install -r requirements.txt
+python worker.py
+
+# Publish test job
+redis-cli XADD ingestion_requests * \
+  job_id abc123 \
+  client_id clientA \
+  bucket client-bucket \
+  key clientA/incoming/test.parquet
+
+---
+## Repo Structure
+
+lambda/         # scan + routing
+pod-manager/    # ensures workers exist
+worker/         # ingestion
+k8s/            # manifests
+scripts/        # deploy / run helpers
+
+---
