@@ -33,15 +33,15 @@ Once ingested, the data is stored in DuckLake, with an optional step to update a
 ## Quick Start
 </> **Bash**
 
-# Start Redis
+1. Start Redis
 docker run -p 6379:6379 redis:7
 
-# Run worker locally
+2. Run worker locally
 cd worker
 pip install -r requirements.txt
 python worker.py
 
-# Publish test job
+3. Publish test job
 redis-cli XADD ingestion_requests * \
   job_id abc123 \
   client_id clientA \
