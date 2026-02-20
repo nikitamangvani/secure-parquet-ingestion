@@ -33,7 +33,7 @@ Once ingested, the data is stored in DuckLake, with an optional step to update a
 ## Quick Start
 </> 
 
-
+```bash
 1. Start Redis
 docker run -p 6379:6379 redis:7
 
@@ -49,6 +49,8 @@ redis-cli XADD ingestion_requests * \
   bucket client-bucket \
   key clientA/incoming/test.parquet
 ---
+
+```
 ## Repo Structure
 
 lambda/         # scan + routing
