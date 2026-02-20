@@ -126,3 +126,48 @@ scripts/        # deploy / run helpers
 - Worker should verify job status before processing
 
 ---
+### Detailed Workflow
+
+```mermaid
+flowchart TD
+    %% Step 1: Initialization
+    Start[Initialize DuckLake] --> Schema[Define Tables and Columns]
+    Schema --> S3[(S3: Drop Parquet File)]
+
+    %% Step 2: Security & Lambda
+    S3 --> Lambda[Trigger Lambda]
+    Lambda --> Scan{Virus Scan?}
+    
+    Scan -- Virus Found --> Delete[Delete File]
+    Scan -- Clean --> Copy[Copy to Client Bucket]
+
+    %% Step 2.5: Redis Logic
+    Copy --> CheckPod{Pod Running?}
+    
+    CheckPod -- Yes --> PushWorker[Push to Worker Redis Stream]
+    
+    CheckPod -- No --> PushManager[Push to Pod Manager Stream]
+    PushManager --> PushWorker
+
+    %% Step 3: Pod Manager
+    subgraph K8s_Control [K8s Cluster Management]
+        PushManager -.-> Poll[Pod Manager Polls Redis]
+        Poll --> CreatePod[Create Worker Pod: 1 vCPU / 4GB RAM]
+    end
+
+    %% Step 4: Ingestion Job
+    PushWorker -.-> Worker[Worker Receives Message]
+    CreatePod --> Worker
+    
+    subgraph Worker_Job [Ingestion Execution]
+        Worker --> Load[Copy Parquet to DuckLake]
+        Load --> Calc[Update Metric: Value * 5]
+        Calc --> Finish([Graceful Shutdown])
+    end
+
+    %% Styles
+    style Scan fill:#fff4dd,stroke:#d4a017
+    style CheckPod fill:#fff4dd,stroke:#d4a017
+    style Delete fill:#ff9999,stroke:#b91c1c
+    style Finish fill:#dcfce7,stroke:#166534
+```
