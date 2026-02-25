@@ -128,47 +128,82 @@ scripts/        # deploy / run helpers
 ---
 ### Detailed Workflow
 
+## Updated Workflow (With PostgreSQL State Tracking)
+
 ```mermaid
 flowchart TD
-    %% Step 1: Initialization
-    Start[Initialize DuckLake] --> Schema[Define Tables and Columns]
-    Schema --> S3[(S3: Drop Parquet File)]
 
-    %% Step 2: Security & Lambda
-    S3 --> Lambda[Trigger Lambda]
-    Lambda --> Scan{Virus Scan?}
-    
-    Scan -- Virus Found --> Delete[Delete File]
-    Scan -- Clean --> Copy[Copy to Client Bucket]
+%% --------------------
+%% Initialization
+%% --------------------
+A[Initialize DuckLake<br/>Create tables from Parquet schema]
 
-    %% Step 2.5: Redis Logic
-    Copy --> CheckPod{Pod Running?}
-    
-    CheckPod -- Yes --> PushWorker[Push to Worker Redis Stream]
-    
-    CheckPod -- No --> PushManager[Push to Pod Manager Stream]
-    PushManager --> PushWorker
+%% --------------------
+%% File Upload + Lambda
+%% --------------------
+B[Upload Parquet to S3 Landing]
+C[Lambda Triggered]
+D{Virus Scan Result}
 
-    %% Step 3: Pod Manager
-    subgraph K8s_Control [K8s Cluster Management]
-        PushManager -.-> Poll[Pod Manager Polls Redis]
-        Poll --> CreatePod[Create Worker Pod: 1 vCPU / 4GB RAM]
-    end
+E[Delete / Quarantine File]
+F[Copy File to Client Bucket]
 
-    %% Step 4: Ingestion Job
-    PushWorker -.-> Worker[Worker Receives Message]
-    CreatePod --> Worker
-    
-    subgraph Worker_Job [Ingestion Execution]
-        Worker --> Load[Copy Parquet to DuckLake]
-        Load --> Calc[Update Metric: Value * 5]
-        Calc --> Finish([Graceful Shutdown])
-    end
+%% --------------------
+%% PostgreSQL State Layer
+%% --------------------
+G[Insert Job as PENDING<br/>in PostgreSQL]
+H{Active Pod Exists<br/>in PostgreSQL?}
 
-    %% Styles
-    style Scan fill:#fff4dd,stroke:#d4a017
-    style CheckPod fill:#fff4dd,stroke:#d4a017
-    style Delete fill:#ff9999,stroke:#b91c1c
-    style Finish fill:#dcfce7,stroke:#166534
+I[Push Job to Worker Redis Stream]
+J[Insert Pod STARTING<br/>in PostgreSQL]
+K[Push Message to Pod Manager Stream]
+L[Also Push Job to Worker Redis Stream]
 
-```
+%% --------------------
+%% Pod Manager
+%% --------------------
+M[Pod Manager Listens<br/>to Redis Stream]
+N[Create K8s Worker Pod<br/>4GB RAM | 1 vCPU]
+O[Update Pod Status = RUNNING<br/>in PostgreSQL]
+
+%% --------------------
+%% Worker Processing
+%% --------------------
+P[Worker Receives Job]
+Q[Update Job Status = RUNNING]
+R[Copy Parquet Data → DuckLake]
+S[Update Metric Column<br/>value = value * 5]
+T[Update Job Status = COMPLETED]
+U[Update Pod Status = TERMINATED]
+V[Graceful Pod Shutdown]
+
+%% --------------------
+%% Flow Connections
+%% --------------------
+A --> B
+B --> C
+C --> D
+
+D -->|Virus Found| E
+D -->|Clean File| F
+
+F --> G
+G --> H
+
+H -->|Yes| I
+H -->|No| J
+J --> K
+K --> M
+M --> N
+N --> O
+O --> L
+
+I --> P
+L --> P
+
+P --> Q
+Q --> R
+R --> S
+S --> T
+T --> U
+U --> V
