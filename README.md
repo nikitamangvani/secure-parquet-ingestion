@@ -130,6 +130,7 @@ scripts/        # deploy / run helpers
 
 ## Updated Workflow (With PostgreSQL State Tracking)
 
+```mermaid
 flowchart TD
 
 %% Initialization
@@ -148,8 +149,8 @@ G[Insert Job as PENDING in PostgreSQL]
 H[Query PostgreSQL for Active Pod]
 I{Active Pod Found?}
 
-J[Store Pod Check Result = YES]
-K[Store Pod Check Result = NO]
+J[Store Pod Check Result YES]
+K[Store Pod Check Result NO]
 
 %% YES path
 L[Push Job to Worker Redis Stream]
@@ -173,7 +174,7 @@ W[Update Job Status to COMPLETED]
 X[Update Pod Status to TERMINATED]
 Y[Graceful Pod Shutdown]
 
-%% Flow
+%% Flow Connections
 A --> B
 B --> C
 C --> D
@@ -190,8 +191,10 @@ I -->|No| K
 
 J --> L
 K --> M
+
 M --> N
-N --> Q
+N --> P
+P --> Q
 Q --> R
 R --> O
 
@@ -203,4 +206,6 @@ T --> U
 U --> V
 V --> W
 W --> X
+X --> Y
+```
 X --> Y
