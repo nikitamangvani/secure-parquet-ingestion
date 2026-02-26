@@ -130,56 +130,50 @@ scripts/        # deploy / run helpers
 
 ## Updated Workflow (With PostgreSQL State Tracking)
 
-```mermaid
 flowchart TD
 
-%% --------------------
 %% Initialization
-%% --------------------
 A[Initialize DuckLake<br/>Create tables from Parquet schema]
 
-%% --------------------
-%% File Upload + Lambda
-%% --------------------
+%% Upload + Lambda
 B[Upload Parquet to S3 Landing]
 C[Lambda Triggered]
 D{Virus Scan Result}
 
-E[Delete / Quarantine File]
+E[Delete or Quarantine File]
 F[Copy File to Client Bucket]
 
-%% --------------------
-%% PostgreSQL State Layer
-%% --------------------
-G[Insert Job as PENDING<br/>in PostgreSQL]
-H{Active Pod Exists<br/>in PostgreSQL?}
+%% Control Plane Starts AFTER clean copy
+G[Insert Job as PENDING in PostgreSQL]
+H[Query PostgreSQL for Active Pod]
+I{Active Pod Found?}
 
-I[Push Job to Worker Redis Stream]
-J[Insert Pod STARTING<br/>in PostgreSQL]
-K[Push Message to Pod Manager Stream]
-L[Also Push Job to Worker Redis Stream]
+J[Store Pod Check Result = YES]
+K[Store Pod Check Result = NO]
 
-%% --------------------
+%% YES path
+L[Push Job to Worker Redis Stream]
+
+%% NO path
+M[Insert Pod Record as STARTING in PostgreSQL]
+N[Push Message to Pod Manager Stream]
+O[Push Job to Worker Redis Stream]
+
 %% Pod Manager
-%% --------------------
-M[Pod Manager Listens<br/>to Redis Stream]
-N[Create K8s Worker Pod<br/>4GB RAM | 1 vCPU]
-O[Update Pod Status = RUNNING<br/>in PostgreSQL]
+P[Pod Manager Listens to Redis]
+Q[Create K8s Worker Pod<br/>4GB RAM - 1 vCPU]
+R[Update Pod Status to RUNNING in PostgreSQL]
 
-%% --------------------
-%% Worker Processing
-%% --------------------
-P[Worker Receives Job]
-Q[Update Job Status = RUNNING]
-R[Copy Parquet Data → DuckLake]
-S[Update Metric Column<br/>value = value * 5]
-T[Update Job Status = COMPLETED]
-U[Update Pod Status = TERMINATED]
-V[Graceful Pod Shutdown]
+%% Worker
+S[Worker Receives Job]
+T[Update Job Status to RUNNING]
+U[Copy Parquet Data to DuckLake]
+V[Update Metric Column<br/>value = value * 5]
+W[Update Job Status to COMPLETED]
+X[Update Pod Status to TERMINATED]
+Y[Graceful Pod Shutdown]
 
-%% --------------------
-%% Flow Connections
-%% --------------------
+%% Flow
 A --> B
 B --> C
 C --> D
@@ -189,21 +183,24 @@ D -->|Clean File| F
 
 F --> G
 G --> H
+H --> I
 
-H -->|Yes| I
-H -->|No| J
-J --> K
+I -->|Yes| J
+I -->|No| K
+
+J --> L
 K --> M
 M --> N
-N --> O
-O --> L
-
-I --> P
-L --> P
-
-P --> Q
+N --> Q
 Q --> R
-R --> S
+R --> O
+
+L --> S
+O --> S
+
 S --> T
 T --> U
 U --> V
+V --> W
+W --> X
+X --> Y
