@@ -128,8 +128,6 @@ scripts/        # deploy / run helpers
 ---
 ### Detailed Workflow
 
-## Updated Workflow (With PostgreSQL State Tracking)
-
 ```mermaid
 flowchart TD
 
@@ -208,4 +206,58 @@ V --> W
 W --> X
 X --> Y
 ```
+## Detailed Sequence Diagram 
 
+```mermaid
+sequenceDiagram
+
+participant User
+participant S3_Landing as S3 Landing Bucket
+participant Lambda
+participant S3_Client as S3 Client Bucket
+participant Postgres
+participant Redis
+participant PodManager
+participant K8s
+participant Worker
+participant DuckLake
+
+%% Upload Flow
+User->>S3_Landing: Upload Parquet file
+S3_Landing->>Lambda: Trigger event
+Lambda->>Lambda: Scan for virus
+
+alt Virus Found
+    Lambda->>S3_Landing: Delete / Quarantine file
+else Clean File
+    Lambda->>S3_Client: Copy file to client bucket
+
+    %% Control Plane Starts
+    Lambda->>Postgres: Insert Job (PENDING)
+    Lambda->>Postgres: Check Active Pod
+
+    alt Active Pod Exists
+        Lambda->>Postgres: Store pod_check = YES
+        Lambda->>Redis: Push job to worker stream
+    else No Active Pod
+        Lambda->>Postgres: Store pod_check = NO
+        Lambda->>Postgres: Insert Pod (STARTING)
+        Lambda->>Redis: Push message to pod-manager stream
+        Lambda->>Redis: Push job to worker stream
+    end
+end
+
+%% Pod Manager Flow
+Redis->>PodManager: Pod creation message
+PodManager->>K8s: Create worker pod (4GB RAM, 1 vCPU)
+K8s->>Postgres: Update Pod Status = RUNNING
+
+%% Worker Flow
+Redis->>Worker: Deliver ingestion job
+Worker->>Postgres: Update Job = RUNNING
+Worker->>DuckLake: Copy Parquet data
+Worker->>DuckLake: Update metric column (value * 5)
+Worker->>Postgres: Update Job = COMPLETED
+Worker->>Postgres: Update Pod = TERMINATED
+Worker->>K8s: Graceful shutdown
+```
